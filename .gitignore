@@ -1,0 +1,4 @@
+# .gitignore 파일 내용
+credentials.json
+token.json
+jobs.sqlite
