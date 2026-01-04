@@ -17,12 +17,27 @@ import tools
 import scheduler_job
 
 # 1. MCP 서버 초기화
-mcp = FastMCP("Gmail AI Assistant")
+mcp = FastMCP("plan_manager")
 
 # ==============================================================================
 # 스케줄러 설정
 # ==============================================================================
 db_path = os.path.join(current_dir, "jobs.sqlite")
+
+
+env_token = os.environ.get("GOOGLE_TOKEN_JSON")
+if env_token:
+    token_path = os.path.join(current_dir, "token.json")
+    with open(token_path, "w") as f:
+        f.write(env_token)
+    print("✅ 환경변수에서 token.json 파일을 생성했습니다.")
+
+
+data_dir = os.environ.get("DATA_DIR", current_dir)
+if not os.path.exists(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+
+db_path = os.path.join(data_dir, "jobs.sqlite")
 
 jobstores = {
     'default': SQLAlchemyJobStore(url=f'sqlite:///{db_path}')
@@ -67,10 +82,12 @@ def _register_report_job(group_name: str, subject_query: str, delay_minutes: int
 @mcp.tool()
 def find_contact_email(name: str) -> str:
     """
-    이름으로 구글 주소록에서 이메일을 찾습니다.
-    Args:
-        name: 검색할 이름 (예: "김철수")
-    """
+        [필수 1단계] 사용자가 특정 인물에게 연락하거나 이메일을 보내려고 할 때, 가장 먼저 이 도구를 사용하여 이메일 주소를 찾아야 합니다.
+        약속을 잡거나 그룹 메일을 보낼 때도 이 도구로 각 인물의 이메일을 먼저 확보하세요.
+
+        Args:
+            name: 검색할 이름 (예: "홍길동")
+        """
     email = tools.get_email_from_name(name)
     if email:
         return f"✅ '{name}'님의 이메일: {email}"
@@ -82,14 +99,20 @@ def find_contact_email(name: str) -> str:
 def send_gmail(recipient_names: str, subject: str, body: str,
                enable_report: bool = False, report_delay_minutes: int = 60) -> str:
     """
-    여러 사람에게 Gmail을 보내고, 옵션에 따라 답장 확인 보고서를 예약합니다.
-    Args:
-        recipient_names: 받는 사람 이름 목록 (쉼표로 구분)
-        subject: 메일 제목
-        body: 메일 본문
-        enable_report: 메일 발송 후 일정 시간 뒤 답장 확인 보고서를 예약할지 여부 (기본값: False)
-        report_delay_minutes: 보고서를 예약할 경우 몇 분 뒤에 확인할지 (기본값: 60분)
-    """
+        [필수 2단계] 이메일을 보냅니다. 단순한 메시지 전달뿐만 아니라 '일정 조율', '약속 잡기', '모임 제안' 시에도 이 도구를 사용합니다.
+
+        [사용 가이드]
+        1. 사용자가 "언제가 괜찮은지 물어봐줘" 또는 "약속 잡아줘"라고 하면, 이 도구를 사용해 구체적인 날짜나 기간을 제안하는 메일을 보내세요.
+        2. 여러 명을 만나는 경우 'recipient_names'에 쉼표로 구분하여 입력하세요 (예: "철수, 영희").
+        3. 답장 확인이 필요한 약속 제안의 경우 'enable_report=True'로 설정하세요.
+
+        Args:
+            recipient_names: 받는 사람 이름 목록 (쉼표로 구분, 사전에 find_contact_email로 존재 여부 확인 권장)
+            subject: 메일 제목
+            body: 메일 본문 (날짜 제안, 장소, 안부 인사 등을 포함하여 정중하게 작성)
+            enable_report: 메일 발송 후 답장 확인 보고서를 예약할지 여부 (일정 조율 시 True 권장)
+            report_delay_minutes: 보고서를 예약할 경우 몇 분 뒤에 확인할지
+        """
     names = [n.strip() for n in recipient_names.split(',')]
     email_list = []
     failed_names = []
@@ -128,7 +151,7 @@ def check_my_replies(subject_keyword: str) -> str:
     """
     특정 제목으로 온 답장이 있는지 메일함을 확인합니다.
     Args:
-        subject_keyword: 검색할 메일 제목 키워드 (예: "[A그룹]")
+        subject_keyword: 검색할 메일 제목 키워드 (예: "[약속 조사 그룹:조현성,송민기]")
     """
     replies = tools.fetch_replies(subject_keyword)
 
