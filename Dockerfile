@@ -11,13 +11,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 소스 코드 복사
 COPY . .
 
-# 데이터 저장용 폴더 생성 (나중에 여기에 볼륨 연결)
+# 데이터 저장용 폴더 생성 (스케줄러 DB 저장용)
 RUN mkdir -p /app/data
 
 # 포트 개방
 EXPOSE 8000
 
-# 실행 명령어 (SSE 모드로 실행)
-# 데이터 경로는 /app/data 로 지정
+# 환경변수 설정
 ENV DATA_DIR="/app/data"
-CMD ["fastmcp", "run", "gmail_mcp.py", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+
+# [핵심 수정]
+# 'fastmcp run' 대신 'python'으로 파일을 직접 실행합니다.
+# 코드 내부의 mcp.run(host='0.0.0.0'...) 설정이 작동하도록 하기 위함입니다.
+CMD ["python", "gmail_mcp.py"]
