@@ -179,8 +179,8 @@ def schedule_status_report(group_name: str, subject_query: str, delay_minutes: i
 # [핵심 수정] 서버 실행 및 마운트 로직
 # ==============================================================================
 
-# 1. MCP 서버를 FastAPI 앱의 '/sse' 경로에 마운트
-mcp.mount(app, path="/sse")
+# 1. MCP 서버를 FastAPI 앱에 마운트 (FastMCP가 자동으로 /sse 경로를 잡습니다)
+mcp.mount(app)
 
 if __name__ == "__main__":
     # 2. Uvicorn을 사용하여 FastAPI 앱 실행
