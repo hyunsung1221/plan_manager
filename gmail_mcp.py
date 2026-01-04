@@ -3,8 +3,7 @@
 from fastmcp import FastMCP
 import sys
 import os
-# [수정] FastAPI 직접 생성 코드 제거, 필요한 모듈만 import
-from starlette.middleware.cors import CORSMiddleware
+# FastAPI 관련 복잡한 import 제거
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime, timedelta
@@ -24,37 +23,7 @@ except ImportError as e:
 mcp = FastMCP("plan_manager")
 
 # ==============================================================================
-# [핵심 수정] 내부 FastAPI 앱에 접근하여 설정 주입 (mount 대신 사용)
-# ==============================================================================
-# FastMCP는 내부적으로 _http_server라는 FastAPI 객체를 가지고 있습니다.
-# 이를 통해 mount()를 호출하지 않고도 라우트와 미들웨어를 추가할 수 있습니다.
-
-app = mcp._http_server
-
-# 1) CORS 설정
-if app:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-# 2) 헬스체크 엔드포인트 직접 추가
-# 이렇게 하면 mcp.run() 실행 시 이 경로들도 함께 활성화됩니다.
-if app:
-    @app.get("/health")
-    def health_check():
-        return {"status": "ok", "timestamp": datetime.now().isoformat()}
-
-
-    @app.get("/")
-    def root_check():
-        return {"status": "running", "service": "Gmail MCP Server"}
-
-# ==============================================================================
-# 환경 변수 및 스케줄러 설정 (기존과 동일)
+# 환경 변수 및 스케줄러 설정
 # ==============================================================================
 env_token = os.environ.get("GOOGLE_TOKEN_JSON")
 if env_token:
@@ -83,7 +52,7 @@ scheduler.start()
 
 
 # ==============================================================================
-# 헬퍼 함수 (기존과 동일)
+# 헬퍼 함수
 # ==============================================================================
 def _register_report_job(group_name: str, subject_query: str, delay_minutes: int) -> str:
     try:
@@ -104,7 +73,7 @@ def _register_report_job(group_name: str, subject_query: str, delay_minutes: int
 
 
 # ==============================================================================
-# 도구(Tool) 정의 (기존과 동일)
+# 도구(Tool) 정의
 # ==============================================================================
 @mcp.tool()
 def find_contact_email(name: str) -> str:
@@ -176,7 +145,7 @@ def schedule_status_report(group_name: str, subject_query: str, delay_minutes: i
 
 
 # ==============================================================================
-# [핵심 수정] 서버 실행 로직 (mcp.run 사용)
+# [핵심] 서버 실행 (mcp.run 사용)
 # ==============================================================================
 if __name__ == "__main__":
     print("🚀 MCP 서버를 시작합니다 (Host: 0.0.0.0)...")
@@ -184,6 +153,11 @@ if __name__ == "__main__":
     # Railway가 제공하는 PORT 환경변수 사용
     port = int(os.environ.get("PORT", 8000))
 
-    # mcp.run()을 사용하여 실행 (이 함수가 내부적으로 uvicorn을 실행하며 SSE 설정을 처리함)
-    # 위에서 _http_server에 추가한 /health 경로는 그대로 유지됩니다.
-    mcp.run(transport="sse", host="0.0.0.0", port=port)
+    # SSE 모드로 실행 (FastMCP가 자동으로 FastAPI 앱을 생성하고 포트를 엽니다)
+    # 별도의 mount나 health check 코드가 없어도 Railway는 포트가 열리면 '성공'으로 간주합니다.
+    try:
+        mcp.run(transport="sse", host="0.0.0.0", port=port)
+    except TypeError:
+        # 혹시 구버전 FastMCP를 사용하는 경우를 대비한 예외처리
+        print("⚠️ SSE transport 옵션이 지원되지 않는 버전일 수 있습니다. 기본 모드로 시도합니다.")
+        mcp.run()
