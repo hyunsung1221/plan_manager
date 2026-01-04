@@ -9,7 +9,46 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # 시스템 경로에 추가 (tools, scheduler_job 모듈 import용)
 sys.path.append(current_dir)
+from fastmcp import FastMCP
+import sys
+import os
 
+# [수정] MCP 서버 생성 시 dependencies 옵션 사용 가능 여부 확인
+# FastMCP 최신 버전에서는 생성자에 바로 설정을 넣기 어렵습니다.
+# 가장 확실한 방법은 FastMCP 객체를 생성한 후 설정을 바꾸는 것입니다.
+
+mcp = FastMCP("plan_manager")
+
+from fastmcp import FastMCP
+import sys
+import os
+
+# [수정] MCP 서버 생성 시 dependencies 옵션 사용 가능 여부 확인
+# FastMCP 최신 버전에서는 생성자에 바로 설정을 넣기 어렵습니다.
+# 가장 확실한 방법은 FastMCP 객체를 생성한 후 설정을 바꾸는 것입니다.
+
+mcp = FastMCP("plan_manager")
+
+# ==============================================================================
+# [필수] 웹 플랫폼 접속을 위한 CORS 설정 추가
+# ==============================================================================
+from starlette.middleware.cors import CORSMiddleware
+
+# mcp 서버 내부의 진짜 웹 앱(FastAPI/Starlette)을 꺼내서 보안 설정을 덮어씁니다.
+# (FastMCP 버전에 따라 _http_server 또는 fastmcp_app 등의 변수명이 다를 수 있으나,
+#  보통 아래 방식이 통합니다. 만약 에러가 나면 알려주세요!)
+
+if hasattr(mcp, "_http_server"):
+    mcp._http_server.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 모든 웹사이트에서 접속 허용
+        allow_credentials=True,
+        allow_methods=["*"],  # 모든 전송 방식(GET, POST 등) 허용
+        allow_headers=["*"],
+    )
+# ==============================================================================
+
+# ... (나머지 코드는 그대로 두세요) ...
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime, timedelta
