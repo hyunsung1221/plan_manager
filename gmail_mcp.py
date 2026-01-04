@@ -3,13 +3,15 @@
 from fastmcp import FastMCP
 import sys
 import os
+# [추가] FastAPI와 Uvicorn 임포트
+from fastapi import FastAPI
+import uvicorn
 from starlette.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime, timedelta
 
 # [중요] 모듈 import (같은 폴더에 tools.py, scheduler_job.py가 있어야 함)
-# Docker에서 실행 시 경로 문제를 방지하기 위해 절대 경로 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
@@ -25,22 +27,36 @@ except ImportError as e:
 mcp = FastMCP("plan_manager")
 
 # ==============================================================================
-# [필수] 웹 플랫폼 접속을 위한 CORS 설정
+# [수정] FastAPI 앱 생성 및 설정 (CORS & 헬스체크)
 # ==============================================================================
-# FastMCP 내부의 FastAPI/Starlette 앱에 접근하여 미들웨어 추가
-if hasattr(mcp, "_http_server"):
-    mcp._http_server.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # 보안상 운영 배포시에는 구체적인 도메인을 적는 것이 좋음
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+app = FastAPI()
+
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# [추가] 헬스체크 엔드포인트
+@app.get("/health")
+def health_check():
+    """로드밸런서 또는 배포 플랫폼을 위한 상태 확인용"""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
+# [추가] 루트 경로 헬스체크 (Railway 등 일부 플랫폼은 / 를 체크함)
+@app.get("/")
+def root_check():
+    return {"status": "running", "service": "Gmail MCP Server"}
+
 
 # ==============================================================================
-# 환경 변수 및 스케줄러 설정
+# 환경 변수 및 스케줄러 설정 (기존과 동일)
 # ==============================================================================
-# Google Token 처리 (서버 환경 변수에서 파일 생성)
 env_token = os.environ.get("GOOGLE_TOKEN_JSON")
 if env_token:
     token_path = os.path.join(current_dir, "token.json")
@@ -49,15 +65,14 @@ if env_token:
             f.write(env_token)
         print("✅ 환경변수에서 token.json 파일을 생성했습니다.")
     except IOError as e:
-        print(f"⚠️ token.json 쓰기 권한 오류 (읽기 전용 파일시스템일 수 있음): {e}")
+        print(f"⚠️ token.json 쓰기 권한 오류: {e}")
 
-# 데이터 저장소 경로 설정 (Docker 볼륨 마운트 고려)
 data_dir = os.environ.get("DATA_DIR", current_dir)
 if not os.path.exists(data_dir):
     try:
         os.makedirs(data_dir, exist_ok=True)
     except Exception:
-        pass  # 권한 없으면 현재 폴더 사용
+        pass
 
 db_path = os.path.join(data_dir, "jobs.sqlite")
 jobstores = {
@@ -69,13 +84,11 @@ scheduler.start()
 
 
 # ==============================================================================
-# 헬퍼 함수
+# 헬퍼 함수 (기존과 동일)
 # ==============================================================================
 def _register_report_job(group_name: str, subject_query: str, delay_minutes: int) -> str:
     try:
         run_time = datetime.now() + timedelta(minutes=delay_minutes)
-
-        # 내 이메일 주소 가져오기
         gmail_service, _ = tools.get_services()
         profile = gmail_service.users().getProfile(userId='me').execute()
         my_email = profile['emailAddress']
@@ -92,9 +105,8 @@ def _register_report_job(group_name: str, subject_query: str, delay_minutes: int
 
 
 # ==============================================================================
-# 도구(Tool) 정의
+# 도구(Tool) 정의 (기존과 동일)
 # ==============================================================================
-
 @mcp.tool()
 def find_contact_email(name: str) -> str:
     """이름으로 이메일 주소를 검색합니다."""
@@ -112,7 +124,6 @@ def send_gmail(recipient_names: str, subject: str, body: str,
     names = [n.strip() for n in recipient_names.split(',')]
     email_list = []
     failed_names = []
-
     for name in names:
         email = tools.get_email_from_name(name)
         if email:
@@ -123,7 +134,6 @@ def send_gmail(recipient_names: str, subject: str, body: str,
     if not email_list:
         return f"❌ 발송 실패: 이름을 찾을 수 없습니다 ({', '.join(failed_names)})."
 
-    # 메일 발송 시도
     try:
         tools.send_email(email_list, subject, body)
     except Exception as e:
@@ -162,15 +172,21 @@ def check_my_replies(subject_keyword: str) -> str:
 
 @mcp.tool()
 def schedule_status_report(group_name: str, subject_query: str, delay_minutes: int = 60) -> str:
-    """답장 확인 보고서만 단독으로 예약합니다."""
     return _register_report_job(group_name, subject_query, delay_minutes)
 
 
 # ==============================================================================
-# [핵심 수정] 서버 실행 진입점
+# [핵심 수정] 서버 실행 및 마운트 로직
 # ==============================================================================
+
+# 1. MCP 서버를 FastAPI 앱의 '/sse' 경로에 마운트
+mcp.mount(app, path="/sse")
+
 if __name__ == "__main__":
-    # Docker/Cloud 환경에서는 host="0.0.0.0" 필수
-    # MCP 클라이언트(Cursor, Claude 등)와 통신하려면 transport="sse" 필수
-    print("🚀 MCP 서버를 시작합니다 (Host: 0.0.0.0, Port: 8000)...")
-    mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    # 2. Uvicorn을 사용하여 FastAPI 앱 실행
+    print("🚀 MCP 서버(with Health Check)를 시작합니다 (Host: 0.0.0.0, Port: 8000)...")
+
+    # Railway 등 클라우드 배포 시 PORT 환경변수 처리
+    port = int(os.environ.get("PORT", 8000))
+
+    uvicorn.run(app, host="0.0.0.0", port=port)
