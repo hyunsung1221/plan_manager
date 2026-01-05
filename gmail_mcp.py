@@ -1,9 +1,6 @@
-# gmail_mcp.py
-
 from fastmcp import FastMCP
 import sys
 import os
-# FastAPI 관련 복잡한 import 제거
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime, timedelta
@@ -141,23 +138,20 @@ def check_my_replies(subject_keyword: str) -> str:
 
 @mcp.tool()
 def schedule_status_report(group_name: str, subject_query: str, delay_minutes: int = 60) -> str:
+    """특정 시간 뒤에 답장 여부를 확인하여 리포트하도록 예약합니다."""
     return _register_report_job(group_name, subject_query, delay_minutes)
 
 
 # ==============================================================================
-# [핵심] 서버 실행 (mcp.run 사용)
+# [핵심] 서버 실행 (HTTP / SSE 모드)
 # ==============================================================================
 if __name__ == "__main__":
-    print("🚀 MCP 서버를 시작합니다 (Host: 0.0.0.0)...")
-
-    # Railway가 제공하는 PORT 환경변수 사용
+    # Railway 등 외부 환경에서 주입되는 포트 사용
     port = int(os.environ.get("PORT", 8000))
 
-    # SSE 모드로 실행 (FastMCP가 자동으로 FastAPI 앱을 생성하고 포트를 엽니다)
-    # 별도의 mount나 health check 코드가 없어도 Railway는 포트가 열리면 '성공'으로 간주합니다.
-    try:
-        mcp.run(transport="sse", host="0.0.0.0", port=port)
-    except TypeError:
-        # 혹시 구버전 FastMCP를 사용하는 경우를 대비한 예외처리
-        print("⚠️ SSE transport 옵션이 지원되지 않는 버전일 수 있습니다. 기본 모드로 시도합니다.")
-        mcp.run()
+    print(f"🚀 MCP 서버를 HTTP(SSE) 모드로 시작합니다.")
+    print(f"📡 접속 주소: http://0.0.0.0:{port}/sse")
+
+    # transport="sse"는 MCP 프로토콜을 HTTP 서버 위에서 실행한다는 의미입니다.
+    # 0.0.0.0으로 바인딩하여 외부(Docker/Railway)에서 접속 가능하게 합니다.
+    mcp.run(transport="sse", host="0.0.0.0", port=port)
