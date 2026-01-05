@@ -32,6 +32,16 @@ if env_token:
     except IOError as e:
         print(f"⚠️ token.json 오류: {e}")
 
+env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+if env_creds:
+    creds_path = os.path.join(current_dir, "credentials.json")
+    try:
+        with open(creds_path, "w") as f:
+            f.write(env_creds)
+        print("✅ 환경변수에서 credentials.json 생성")
+    except IOError as e:
+        print(f"⚠️ credentials.json 오류: {e}")
+
 data_dir = os.environ.get("DATA_DIR", current_dir)
 if not os.path.exists(data_dir):
     try:
@@ -72,6 +82,37 @@ def _register_report_job(group_name: str, subject_query: str, delay_minutes: int
 # ==============================================================================
 # 도구(Tool) 정의
 # ==============================================================================
+
+import auth  # auth 모듈 import 확인
+
+@mcp.tool()
+def login_gmail() -> str:
+    """
+    구글 로그인이 필요할 때 인증 링크를 요청합니다.
+    사용자가 이 링크로 들어가서 로그인을 하고, 나오는 '인증 코드'를 복사해야 합니다.
+    """
+    try:
+        url = auth.get_authorization_url()
+        return (
+            f"🔐 구글 로그인이 필요합니다.\n"
+            f"1. 아래 링크를 클릭하여 로그인하세요:\n{url}\n\n"
+            f"2. 화면에 나오는 '인증 코드'를 복사하세요.\n"
+            f"3. `submit_auth_code` 도구를 사용해 코드를 전달해 주세요."
+        )
+    except Exception as e:
+        return f"오류 발생: {str(e)}"
+
+@mcp.tool()
+def submit_auth_code(code: str) -> str:
+    """
+    login_gmail 도구를 통해 얻은 인증 코드를 입력하여 로그인을 완료합니다.
+    """
+    result = auth.exchange_code_for_token(code)
+    # 인증 성공 시 스케줄러 등을 재정비하거나 서비스를 갱신할 수 있음
+    return result
+
+# ... (기존 send_gmail 등 다른 툴 수정) ...
+
 @mcp.tool()
 def find_contact_email(name: str) -> str:
     """이름으로 이메일 주소를 검색합니다."""
@@ -86,6 +127,9 @@ def find_contact_email(name: str) -> str:
 def send_gmail(recipient_names: str, subject: str, body: str,
                enable_report: bool = False, report_delay_minutes: int = 60) -> str:
     """이메일 전송 및 답장 확인 예약."""
+    if not os.path.exists(os.path.join(current_dir, "token.json")):
+        return "⛔ 로그인이 되어있지 않습니다. `login_gmail` 도구를 먼저 실행해 주세요."
+
     names = [n.strip() for n in recipient_names.split(',')]
     email_list = []
     failed_names = []
