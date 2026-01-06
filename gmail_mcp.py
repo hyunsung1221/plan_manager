@@ -190,18 +190,18 @@ def schedule_status_report(group_name: str, subject_query: str, delay_minutes: i
 # [핵심] 서버 실행 (HTTP / SSE 모드)
 # ==============================================================================
 if __name__ == "__main__":
-    # Railway 등 외부 환경에서 주입되는 포트 사용
+    # Railway 등 외부 환경에서 주입되는 포트 사용 (없으면 8000)
     port = int(os.environ.get("PORT", 8000))
 
-    print(f"🚀 MCP 서버를 HTTP(SSE) 모드로 시작합니다.")
-    print(f"📡 접속 주소: http://0.0.0.0:{port}/sse")
+    print(f"🚀 MCP 서버를 HTTP(Streamable) 모드로 시작합니다.")
+    print(f"📡 접속 주소: http://0.0.0.0:{port}/")
 
-    # transport="sse"는 MCP 프로토콜을 HTTP 서버 위에서 실행한다는 의미입니다.
-    # 0.0.0.0으로 바인딩하여 외부(Docker/Railway)에서 접속 가능하게 합니다.
+    # transport="streamable-http" 사용
+    # path="/" 로 설정하면 기본 루트 경로에서 MCP 통신을 수행합니다.
     mcp.run(
-        transport="streamable-http",
+        transport="streamable-http",  # [중요] 모드 변경
         host="0.0.0.0",
-        port=8000,
+        port=port,                    # [중요] 환경변수 포트 적용
         path="/",
         log_level="debug",
     )
