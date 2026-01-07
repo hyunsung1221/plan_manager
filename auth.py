@@ -1,4 +1,3 @@
-# auth.py 수정본
 import os
 import hashlib
 import json
@@ -15,42 +14,31 @@ Base = declarative_base()
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(bind=engine)
 
-# [DB 모델] 유저 및 토큰 정보
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     salt = Column(String, nullable=False)
-    google_token = Column(Text, nullable=True) # JSON 형태의 토큰 저장
+    google_token = Column(Text, nullable=True)
 
-# 여기서 정상적으로 테이블이 생성됩니다.
 Base.metadata.create_all(bind=engine)
-
-# ... 나머지 함수들(register_user, verify_user 등)은 이전과 동일 ...
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/contacts.readonly']
 CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
 
-
-# 비밀번호 해싱 함수
 def hash_password(password, salt=None):
-    if not salt:
-        salt = os.urandom(16).hex()
+    if not salt: salt = os.urandom(16).hex()
     pw_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
     return pw_hash, salt
-
-
-# --- 유저 관리 함수 ---
 
 def register_user(username, password):
     session = SessionLocal()
     if session.query(User).filter(User.username == username).first():
         session.close()
         return False, "이미 존재하는 아이디입니다."
-
     pw_hash, salt = hash_password(password)
     new_user = User(username=username, password_hash=pw_hash, salt=salt)
     session.add(new_user)
@@ -58,19 +46,16 @@ def register_user(username, password):
     session.close()
     return True, "회원가입 성공!"
 
-
 def verify_user(username, password):
     session = SessionLocal()
     user = session.query(User).filter(User.username == username).first()
     if not user:
         session.close()
         return False
-
     check_hash, _ = hash_password(password, user.salt)
     is_valid = (check_hash == user.password_hash)
     session.close()
     return is_valid
-
 
 def update_user_token(username, token_data):
     session = SessionLocal()
@@ -79,7 +64,6 @@ def update_user_token(username, token_data):
         user.google_token = json.dumps(token_data)
         session.commit()
     session.close()
-
 
 def get_user_creds(username):
     session = SessionLocal()
@@ -91,8 +75,6 @@ def get_user_creds(username):
     session.close()
     return creds
 
-
-# 구글 OAuth 흐름 (기존 로직 유지하되 유저 정보 연결)
 def get_auth_url():
     flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
     auth_url, _ = flow.authorization_url(prompt='consent')
