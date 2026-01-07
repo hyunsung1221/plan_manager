@@ -2,7 +2,7 @@
 import os
 import hashlib
 import json
-from sqlalchemy import create_all, Column, Integer, String, Text, create_engine
+from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from google.oauth2.credentials import Credentials
@@ -15,7 +15,6 @@ Base = declarative_base()
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(bind=engine)
 
-
 # [DB 모델] 유저 및 토큰 정보
 class User(Base):
     __tablename__ = "users"
@@ -23,10 +22,12 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     salt = Column(String, nullable=False)
-    google_token = Column(Text, nullable=True)  # JSON 형태의 토큰 저장
+    google_token = Column(Text, nullable=True) # JSON 형태의 토큰 저장
 
-
+# 여기서 정상적으로 테이블이 생성됩니다.
 Base.metadata.create_all(bind=engine)
+
+# ... 나머지 함수들(register_user, verify_user 등)은 이전과 동일 ...
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
