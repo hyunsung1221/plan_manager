@@ -85,27 +85,30 @@ def get_user_creds(username):
     return creds
 
 
+# auth.py 수정본
+
 def get_auth_url():
     """환경 변수 또는 파일에서 설정을 읽어 인증 URL 생성"""
     env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
     if env_creds:
-        # 1. Railway 환경 변수에 값이 설정되어 있는 경우
+        # 1. Railway 환경 변수 사용 시
         client_config = json.loads(env_creds)
         flow = InstalledAppFlow.from_client_config(
             client_config,
             SCOPES,
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+            redirect_uri='http://localhost'  # OOB 대신 localhost 사용
         )
     elif os.path.exists(CREDENTIALS_FILE):
-        # 2. 로컬 테스트용 (파일이 존재하는 경우)
+        # 2. 로컬 파일 사용 시
         flow = InstalledAppFlow.from_client_secrets_file(
             CREDENTIALS_FILE,
             SCOPES,
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+            redirect_uri='http://localhost'  # OOB 대신 localhost 사용
         )
     else:
-        raise FileNotFoundError("구글 인증 설정(환경 변수 또는 credentials.json)을 찾을 수 없습니다.")
+        raise FileNotFoundError("구글 인증 설정을 찾을 수 없습니다.")
 
-    auth_url, _ = flow.authorization_url(prompt='consent')
+    # access_type='offline'을 설정해야 나중에 토큰 갱신(Refresh)이 가능합니다.
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     return auth_url, flow
