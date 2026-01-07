@@ -97,14 +97,25 @@ def get_user_creds(username):
 
 
 def get_auth_url():
-    # Railway 환경 변수 또는 직접 주소 입력
-    redirect_uri = "https://planmanager-production.up.railway.app/callback"
+    """인증 URL 생성 및 리디렉션 경로 설정"""
+    env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
-    # flow 생성 시 redirect_uri를 위 주소로 교체
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CREDENTIALS_FILE,
-        SCOPES,
-        redirect_uri=redirect_uri
-    )
+    # Railway 퍼블릭 도메인 확인
+    public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    if public_domain:
+        if not public_domain.startswith("http"):
+            public_domain = f"https://{public_domain}"
+        redirect_uri = f"{public_domain}/callback"
+    else:
+        redirect_uri = "https://planmanager-production.up.railway.app/callback"
+
+    if env_creds:
+        client_config = json.loads(env_creds)
+        flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=redirect_uri)
+    elif os.path.exists(CREDENTIALS_FILE):
+        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES, redirect_uri=redirect_uri)
+    else:
+        raise FileNotFoundError("구글 인증 설정을 찾을 수 없습니다.")
+
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     return auth_url, flow
