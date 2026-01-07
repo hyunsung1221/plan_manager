@@ -14,6 +14,7 @@ Base = declarative_base()
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(bind=engine)
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -22,17 +23,22 @@ class User(Base):
     salt = Column(String, nullable=False)
     google_token = Column(Text, nullable=True)
 
+
 Base.metadata.create_all(bind=engine)
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/contacts.readonly']
+
+# 기존 파일 경로 (로컬용)
 CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
+
 
 def hash_password(password, salt=None):
     if not salt: salt = os.urandom(16).hex()
     pw_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
     return pw_hash, salt
+
 
 def register_user(username, password):
     session = SessionLocal()
@@ -46,6 +52,7 @@ def register_user(username, password):
     session.close()
     return True, "회원가입 성공!"
 
+
 def verify_user(username, password):
     session = SessionLocal()
     user = session.query(User).filter(User.username == username).first()
@@ -57,6 +64,7 @@ def verify_user(username, password):
     session.close()
     return is_valid
 
+
 def update_user_token(username, token_data):
     session = SessionLocal()
     user = session.query(User).filter(User.username == username).first()
@@ -64,6 +72,7 @@ def update_user_token(username, token_data):
         user.google_token = json.dumps(token_data)
         session.commit()
     session.close()
+
 
 def get_user_creds(username):
     session = SessionLocal()
@@ -75,7 +84,28 @@ def get_user_creds(username):
     session.close()
     return creds
 
+
 def get_auth_url():
-    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+    """환경 변수 또는 파일에서 설정을 읽어 인증 URL 생성"""
+    env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+
+    if env_creds:
+        # 1. Railway 환경 변수에 값이 설정되어 있는 경우
+        client_config = json.loads(env_creds)
+        flow = InstalledAppFlow.from_client_config(
+            client_config,
+            SCOPES,
+            redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+        )
+    elif os.path.exists(CREDENTIALS_FILE):
+        # 2. 로컬 테스트용 (파일이 존재하는 경우)
+        flow = InstalledAppFlow.from_client_secrets_file(
+            CREDENTIALS_FILE,
+            SCOPES,
+            redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+        )
+    else:
+        raise FileNotFoundError("구글 인증 설정(환경 변수 또는 credentials.json)을 찾을 수 없습니다.")
+
     auth_url, _ = flow.authorization_url(prompt='consent')
     return auth_url, flow
