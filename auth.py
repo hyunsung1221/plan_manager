@@ -6,6 +6,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+import urllib.parse
+import os
+import json
+from google_auth_oauthlib.flow import InstalledAppFlow
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_URL = f"sqlite:///{os.path.join(BASE_DIR, 'users.sqlite')}"
@@ -87,28 +92,44 @@ def get_user_creds(username):
 
 # auth.py 수정본
 
+def extract_code_from_url(url_or_code):
+    """URL에서 code 파라미터만 추출하는 유틸리티"""
+    if url_or_code.startswith("http"):
+        parsed = urllib.parse.urlparse(url_or_code)
+        params = urllib.parse.parse_qs(parsed.query)
+        if 'code' in params:
+            return params['code'][0]
+    return url_or_code
+
+
 def get_auth_url():
-    """환경 변수 또는 파일에서 설정을 읽어 인증 URL 생성"""
+    """Railway 환경에 맞춰 리다이렉트 URI를 동적으로 설정"""
     env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
+    # Railway의 퍼블릭 도메인을 환경 변수에서 가져옵니다.
+    # (예: https://your-app.up.railway.app)
+    public_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    if public_url and not public_url.startswith("http"):
+        public_url = f"https://{public_url}"
+
+    # /callback 경로를 인증 완료 페이지로 사용합니다.
+    redirect_uri = f"{public_url}/callback" if public_url else "http://localhost"
+
     if env_creds:
-        # 1. Railway 환경 변수 사용 시
         client_config = json.loads(env_creds)
         flow = InstalledAppFlow.from_client_config(
             client_config,
             SCOPES,
-            redirect_uri='http://localhost'  # OOB 대신 localhost 사용
+            redirect_uri=redirect_uri
         )
     elif os.path.exists(CREDENTIALS_FILE):
-        # 2. 로컬 파일 사용 시
         flow = InstalledAppFlow.from_client_secrets_file(
             CREDENTIALS_FILE,
             SCOPES,
-            redirect_uri='http://localhost'  # OOB 대신 localhost 사용
+            redirect_uri=redirect_uri
         )
     else:
         raise FileNotFoundError("구글 인증 설정을 찾을 수 없습니다.")
 
-    # access_type='offline'을 설정해야 나중에 토큰 갱신(Refresh)이 가능합니다.
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     return auth_url, flow

@@ -5,6 +5,9 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime, timedelta
+from fastmcp import FastMCP
+from fastapi import Request
+from fastapi.responses import HTMLResponse
 
 # 모듈 경로 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,9 +21,23 @@ except ImportError as e:
     print(f"❌ 필수 모듈을 찾을 수 없습니다: {e}")
     sys.exit(1)
 
+
 # 1. MCP 서버 초기화
 mcp = FastMCP("plan_manager")
 
+app = mcp.http_app()# 이제 mcp가 정의되었으므로 에러가 나지 않습니다.
+
+@app.get("/callback", response_class=HTMLResponse)
+async def auth_callback(request: Request):
+    code = request.query_params.get("code")
+    return f"""
+    <html>
+        <body>
+            <h1>인증 성공!</h1>
+            <p>코드: {code}</p>
+        </body>
+    </html>
+    """
 # ==============================================================================
 # 데이터 디렉토리 및 스케줄러 설정
 # ==============================================================================
