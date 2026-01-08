@@ -99,7 +99,7 @@ def get_user_creds(username):
 # auth.py 수정 제안
 def get_auth_url():
     """인증 URL 생성 및 리디렉션 경로 설정"""
-    env_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    env_creds = os.environ.get("GOOGLE_CCREDENTIALS_JSON")
 
     # [수정] 가장 확실한 방법: 콘솔에 등록한 주소와 100% 일치시킵니다.
     redirect_uri = "https://planmanager-production.up.railway.app/callback"
