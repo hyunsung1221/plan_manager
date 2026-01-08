@@ -28,49 +28,43 @@ mcp = FastMCP("plan_manager")
 # 2. 인증 성공 페이지 설정 (Starlette 호환 방식)
 # ==============================================================================
 async def auth_callback(request):
-    """구글 인증 완료 후 보여줄 사용자 친화적 페이지 (복사 버튼 포함)"""
-    code = request.query_params.get("code", "코드를 찾을 수 없습니다.")
-    html_content = f"""
-    <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>인증 완료 - Plan Manager</title>
-            <style>
-                body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f5f5f7; }}
-                .card {{ background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 90%; }}
-                h1 {{ color: #1d1d1f; font-size: 24px; margin-bottom: 10px; }}
-                p {{ color: #86868b; margin-bottom: 25px; line-height: 1.5; }}
-                .code-box {{ background: #f2f2f7; padding: 15px; border-radius: 10px; font-family: monospace; font-size: 14px; word-break: break-all; margin-bottom: 20px; border: 1px solid #d2d2d7; }}
-                .copy-btn {{ background: #0071e3; color: white; border: none; padding: 12px 25px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; }}
-                .copy-btn:hover {{ background: #0077ed; }}
-                .copy-btn:active {{ transform: scale(0.98); }}
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <h1>✅ 인증 완료</h1>
-                <p>아래 인증 코드를 복사하여<br>AI 채팅창에 붙여넣어 주세요.</p>
-                <div class="code-box" id="authCode">{code}</div>
-                <button class="copy-btn" onclick="copyToClipboard()">버튼 눌러서 코드 복사하기</button>
-            </div>
-            <script>
-                function copyToClipboard() {{
-                    const codeText = document.getElementById('authCode').innerText;
-                    navigator.clipboard.writeText(codeText).then(() => {{
-                        const btn = document.querySelector('.copy-btn');
-                        btn.innerText = '✅ 복사되었습니다!';
-                        btn.style.background = '#34c759';
-                        setTimeout(() => {{
-                            btn.innerText = '버튼 눌러서 코드 복사하기';
-                            btn.style.background = '#0071e3';
-                        }}, 2000);
-                    }});
-                }}
-            </script>
-        </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+    """구글 인증 완료 후 호출되어 자동으로 토큰을 DB에 저장합니다."""
+    code = request.query_params.get("code")
+    username = request.query_params.get("state")  # state를 통해 유저 식별
+
+    if not code or not username:
+        return HTMLResponse(content="<h1>❌ 오류</h1><p>인증 정보가 올바르지 않습니다.</p>", status_code=400)
+
+    try:
+        # 메모리에 저장된 해당 유저의 flow 객체 가져오기
+        flow = active_flows.get(username)
+        if not flow:
+            # 만약 서버 재시작 등으로 flow가 사라졌다면 새로 생성 시도
+            _, flow = auth.get_auth_url(state=username)
+            active_flows[username] = flow
+
+        # 1. 코드를 사용하여 토큰 가져오기
+        flow.fetch_token(code=code)
+
+        # 2. DB에 토큰 저장
+        token_data = json.loads(flow.credentials.to_json())
+        auth.update_user_token(username, token_data)
+
+        # 3. 사용 완료된 flow 삭제
+        if username in active_flows:
+            del active_flows[username]
+
+        return HTMLResponse(content=f"""
+            <html>
+                <head><meta charset="UTF-8"><title>인증 완료</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+                    <h1>✅ {username}님, 인증 성공!</h1>
+                    <p>이제 코드를 복사할 필요가 없습니다. 창을 닫고 AI에게 돌아가세요.</p>
+                </body>
+            </html>
+        """)
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>❌ 인증 실패</h1><p>{str(e)}</p>", status_code=500)
 
 
 # Starlette 앱에 직접 경로 추가 (AttributeError 해결)
@@ -131,45 +125,26 @@ def manage_user_auth(username: str, password: str, auth_code: str = None) -> str
     # 1. 로그인 시도
     if auth.verify_user(username, password):
         creds = auth.get_user_creds(username)
-
-        # 연동 완료 상태
         if creds:
             return f"✅ '{username}'님, 로그인이 완료되었으며 구글 계정도 이미 연동되어 있습니다."
 
-        # 구글 연동 진행 중
-        if auth_code:
-            actual_code = auth.extract_code_from_url(auth_code)  # URL 자동 파싱
-            flow = active_flows.get(username)
-            if not flow:
-                url, flow = auth.get_auth_url()
-                active_flows[username] = flow
-                return f"⚠️ 인증 세션이 만료되었습니다. 다시 시도해 주세요: {url}"
-            try:
-                flow.fetch_token(code=actual_code)
-                auth.update_user_token(username, json.loads(flow.credentials.to_json()))
-                if username in active_flows: del active_flows[username]
-                return f"✅ '{username}'님, 구글 연동이 성공적으로 완료되었습니다!"
-            except Exception as e:
-                return f"❌ 코드 인증 실패: {str(e)}"
-        else:
-            url, flow = auth.get_auth_url()
-            active_flows[username] = flow
-            return (f"👋 '{username}'님, 로그인 성공! 구글 계정 연동이 필요합니다.\n"
-                    f"1. [여기 클릭해서 인증하기]({url})\n"
-                    f"2. 완료 후 나타나는 페이지에서 코드를 복사해 'auth_code' 인자로 전달하세요.")
+        # 구글 연동이 필요한 경우 (state에 username 전달)
+        url, flow = auth.get_auth_url(state=username)
+        active_flows[username] = flow
+        return (f"👋 '{username}'님, 로그인 성공! 구글 계정 연동이 필요합니다.\n"
+                f"**[여기 클릭해서 인증하기]({url})**\n"
+                f"인증을 완료하면 자동으로 연동됩니다.")
 
-    # 2. 신규 가입 시도
+        # 2. 신규 가입 시도
     success, msg = auth.register_user(username, password)
     if success:
-        url, flow = auth.get_auth_url()
+        url, flow = auth.get_auth_url(state=username)  # state에 username 전달
         active_flows[username] = flow
         return (f"✨ '{username}'님, 회원가입이 완료되었습니다!\n"
-                f"1. [인증 링크 클릭]({url})\n"
-                f"2. 완료 후 발급받은 코드를 'auth_code'로 전달해 주세요.")
+                f"**[인증 링크 클릭]({url})**\n"
+                f"링크 접속 후 구글 로그인을 마치면 자동으로 계정이 연동됩니다.")
     else:
-        # 아이디가 이미 존재하는데 로그인이 실패한 경우
-        return f"❌ 인증 실패: {msg} (비밀번호를 다시 확인해 주세요.)"
-
+        return f"❌ 인증 실패: {msg}"
 
 @mcp.tool()
 def find_contact_email(username: str, password: str, name: str) -> str:
