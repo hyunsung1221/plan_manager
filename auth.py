@@ -98,29 +98,53 @@ def get_user_creds(username):
 
 # auth.py 수정 제안
 def get_auth_url():
-    """인증 URL 생성 및 리디렉션 경로 설정"""
-    env_creds = os.environ.get("NEW_GOOGLE_CREDENTIALS_JSON")
+    """인증 URL 생성 및 리디렉션 경로 설정 (디버깅 로그 강화)"""
+    env_var_name = "NEW_GOOGLE_CREDENTIALS_JSON"
+    env_creds = os.environ.get(env_var_name)
 
-    # [수정] 가장 확실한 방법: 콘솔에 등록한 주소와 100% 일치시킵니다.
     redirect_uri = "https://planmanager-production.up.railway.app/callback"
 
-    print(f"DEBUG: 요청할 리디렉션 주소 -> {redirect_uri}")
+    print(f"\n🔍 [DEBUG] 구글 인증 설정 점검 시작")
+    print(f"   1. 요청 리디렉션 주소: {redirect_uri}")
+    print(f"   2. 찾는 환경 변수명: '{env_var_name}'")
 
+    # 1. 환경 변수에서 가져오기 시도
     if env_creds:
-        client_config = json.loads(env_creds)
-        flow = InstalledAppFlow.from_client_config(
-            client_config,
-            SCOPES,
-            redirect_uri=redirect_uri  # 이 값이 구글 콘솔 값과 같아야 함
-        )
+        print(f"   ✅ 결과: 환경 변수 '{env_var_name}' 발견! (데이터 길이: {len(env_creds)})")
+        try:
+            client_config = json.loads(env_creds)
+            print("   ✅ 결과: JSON 파싱 성공")
+            flow = InstalledAppFlow.from_client_config(
+                client_config,
+                SCOPES,
+                redirect_uri=redirect_uri
+            )
+        except json.JSONDecodeError as je:
+            print(f"   ❌ 오류: JSON 파싱 실패! 데이터 형식을 확인하세요. ({str(je)})")
+            print(f"   데이터 앞부분 일부: {env_creds[:50]}...")
+            raise je
+
+    # 2. 파일에서 가져오기 시도 (로컬 테스트용)
     elif os.path.exists(CREDENTIALS_FILE):
+        print(f"   ✅ 결과: 환경 변수는 없으나 로컬 파일 발견: {CREDENTIALS_FILE}")
         flow = InstalledAppFlow.from_client_secrets_file(
             CREDENTIALS_FILE,
             SCOPES,
             redirect_uri=redirect_uri
         )
+
+    # 3. 둘 다 없음 (에러 발생 지점)
     else:
-        raise FileNotFoundError("구글 인증 설정을 찾을 수 없습니다.")
+        print(f"   ❌ 오류: 설정 정보를 찾을 수 없습니다.")
+        print(f"   - 시도한 변수명: {env_var_name}")
+        print(f"   - 시도한 파일 경로: {CREDENTIALS_FILE}")
+
+        # 보안을 위해 'GOOGLE'이나 'JSON'이 포함된 환경 변수 키 이름들만 출력 (값은 출력 안 함)
+        related_keys = [k for k in os.environ.keys() if "GOOGLE" in k or "JSON" in k]
+        print(f"   - [참고] 현재 설정된 유사 환경 변수 목록: {related_keys}")
+
+        raise FileNotFoundError(f"구글 인증 설정을 찾을 수 없습니다. (환경변수 '{env_var_name}' 또는 파일 확인 필요)")
 
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+    print(f"   ✅ 결과: 인증 URL 생성 성공\n")
     return auth_url, flow
