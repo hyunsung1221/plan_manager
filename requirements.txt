@@ -7,5 +7,5 @@ google-auth-httplib2
 google-auth-oauthlib
 uvicorn
 fastapi
-python-dotenv  # 환경 변수 관리용 (추가 권장)
-cryptography   # DB 내 토큰 암호화용 (추가 권장)
+python-dotenv
+cryptography

@@ -1,16 +1,17 @@
+# scheduler_job.py
 import tools
 import auth
 
-def report_status(username, group_name, subject_query, user_email):
+def report_status(user_email, group_name, subject_query, recipient_email):
     """
-    백그라운드에서 실행될 때 DB에서 해당 유저의 토큰을 가져와 보고서를 보냅니다.
+    백그라운드에서 실행될 때 DB에서 해당 유저의 토큰(auth.py)을 가져와 보고서를 보냅니다.
     """
-    print(f"\n⏰ [알림] '{username}' 유저의 '{group_name}' 보고를 시작합니다.")
+    print(f"\n⏰ [알림] '{user_email}' 유저의 '{group_name}' 보고를 시작합니다.")
 
     # 1. DB에서 해당 유저의 인증 정보(creds) 가져오기
-    creds = auth.get_user_creds(username)
+    creds = auth.get_user_creds(user_email)
     if not creds:
-        print(f"❌ 오류: '{username}' 유저의 인증 정보를 찾을 수 없습니다.")
+        print(f"❌ 오류: '{user_email}' 유저의 인증 정보를 찾을 수 없습니다. (토큰 만료 가능성)")
         return
 
     # 2. 답장 확인
@@ -27,7 +28,7 @@ def report_status(username, group_name, subject_query, user_email):
     # 4. 발송
     tools.send_email_with_creds(
         creds=creds,
-        to_list=[user_email],
+        to_list=[recipient_email],
         subject=f"[중간보고] {group_name} 상황",
         body=summary_body
     )
