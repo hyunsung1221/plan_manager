@@ -54,7 +54,11 @@ auth_provider = GoogleProvider(
 )
 
 # 3. MCP 서버 초기화 (Auth Provider 적용)
-mcp = FastMCP("plan_manager", auth=auth_provider)
+mcp = FastMCP("plan_manager", auth=auth_providermcp,
+    # 👇 카카오와 로컬 개발 환경을 허용해줍니다.
+    cors_allow_origins=[
+        "*"  # 테스트용으로 모두 허용 (보안을 위해 나중엔 빼는 게 좋습니다)
+    ])
 app = mcp.http_app()
 
 
